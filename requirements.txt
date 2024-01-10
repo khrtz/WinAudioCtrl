@@ -1,0 +1,6 @@
+comtypes==1.2.1
+psutil==5.9.7
+PyAudio==0.2.14
+pycaw==20230407
+PySide2==5.15.2.1
+shiboken2==5.15.2.1

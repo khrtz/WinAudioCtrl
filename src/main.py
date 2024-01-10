@@ -1,11 +1,12 @@
 import sys
 import subprocess
+import winreg
 from PySide2.QtWidgets import QApplication, QMainWindow, QComboBox, QVBoxLayout, QWidget
-from pycaw.pycaw import AudioUtilities
 
 class AudioSwitcher(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.deviceComboBox = None
         self.initUI()
 
     def initUI(self):
@@ -14,17 +15,9 @@ class AudioSwitcher(QMainWindow):
 
         layout = QVBoxLayout()
         self.deviceComboBox = QComboBox()
-
-        # オーディオデバイスの一覧を取得
-        devices = AudioUtilities.GetAllDevices()
-        self.deviceMap = {}
-        for device in devices:
-            device_name = device.FriendlyName
-            device_id = device.id
-            print(device_name, device_id)
-            if device_name:  # Ensure the device has a name
-                self.deviceComboBox.addItem(device_name)
-                self.deviceMap[device_name] = device_id
+        self.deviceMap = self.get_active_audio_device_ids()
+        for device_name, device_id in self.deviceMap.items():
+            self.deviceComboBox.addItem(device_name)
 
         layout.addWidget(self.deviceComboBox)
 
@@ -34,14 +27,33 @@ class AudioSwitcher(QMainWindow):
 
         self.deviceComboBox.currentIndexChanged.connect(self.onDeviceChange)
 
+    def get_active_audio_device_ids(self):
+        deviceMap = {}
+        reg_path = r'SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Render'
+        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, reg_path)
+        for i in range(0, winreg.QueryInfoKey(key)[0]):
+            device_key_name = winreg.EnumKey(key, i)
+            device_key = winreg.OpenKey(key, device_key_name)
+            properties_key = winreg.OpenKey(device_key, 'Properties')
+            device_state = winreg.QueryValueEx(device_key, 'DeviceState')[0]
+
+            if device_state == 1:
+                device_name = winreg.QueryValueEx(properties_key, '{a45c254e-df1c-4efd-8020-67d146a850e0},2')[0]
+                deviceMap[device_name] = device_key_name
+
+            winreg.CloseKey(properties_key)
+            winreg.CloseKey(device_key)
+
+        winreg.CloseKey(key)
+        return deviceMap
+
     def onDeviceChange(self, index):
         device_name = self.deviceComboBox.itemText(index)
         device_id = self.deviceMap[device_name]
         self.switchAudioDevice(device_id)
 
     def switchAudioDevice(self, device_id):
-        # PowerShellスクリプトを実行してデバイスを切り替える
-        script_path = r"./SetAudioOutput.ps1"
+        script_path = r"./src/SetAudio.ps1"
         subprocess.run(["powershell.exe", "-File", script_path, device_id])
 
 if __name__ == "__main__":
